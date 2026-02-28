@@ -3,12 +3,13 @@ Edge Chatbot Backend API
 Runs locally on port 8000. Connects to Ollama (port 11434) for AI inference.
 Bridges ticket creation to the Admin Portal (port 9000).
 """
+from __future__ import annotations
 
 import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Any, cast
 import httpx
 import subprocess
 import asyncio
@@ -39,7 +40,7 @@ app.add_middleware(
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 ADMIN_PORTAL_URL = "http://localhost:9000/receive-ticket"
-OLLAMA_MODEL = "llama3"
+OLLAMA_MODEL = "gemma3"
 
 SYSTEM_PROMPT = (
     "You are InfraBuddy, an expert technical support assistant. "
@@ -69,7 +70,7 @@ Write-Host "Clearing User TEMP folder..."
 Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "Clearing Windows TEMP folder..."
 Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Temporary files cleared. System should be slightly faster."
+Write-Host "Accessible temporary files cleared. Some system-locked files were skipped — this is normal and expected on Windows."
 '''
     },
     "restart_wifi": {
@@ -110,30 +111,30 @@ def detect_intent(message: str) -> Optional[str]:
     msg = message.lower()
     
     # 1. Clear Browser Cache
-    if any(kw in msg for kw in ["browser cache", "clear cache", "chrome is slow", "edge is slow", "browser slow", "browser slowing", "browser loading", "browser issues"]):
+    if any(kw in msg for kw in ["browser cache", "clear cache", "chrome is slow", "edge is slow", "browser slow", "browser slowing", "browser loading", "browser issues", "chrome is running slow", "edge is running slow"]):
         return "clear_browser_cache"
     
     # 2. System Slowness
-    if any(kw in msg for kw in ["system is slow", "pc is slow", "laptop freezing", "computer lagging", "monitor traffic", "system resources"]):
+    if any(kw in msg for kw in ["system is slow", "pc is slow", "laptop freezing", "computer lagging", "monitor traffic", "system resources", "laptop is slow"]):
         return "system_speed_cleanup"
         
     # 3. Wi-Fi Restart
-    if any(kw in msg for kw in ["internet is not working", "wifi drops", "no internet", "cannot connect to wifi", "wifi restarting", "connection issue"]):
+    if any(kw in msg for kw in ["internet is not working", "wifi drops", "no internet", "cannot connect to wifi", "wifi restarting", "connection issue", "wifi is not working", "internet is slow"]):
         return "restart_wifi"
         
     # 4. Application Restart (Teams/Outlook)
-    if any(kw in msg for kw in ["teams not loading", "teams frozen", "outlook frozen", "outlook not responding", "session data", "close teams", "close outlook"]):
+    if any(kw in msg for kw in ["teams not loading", "teams frozen", "outlook frozen", "outlook not responding", "session data", "close teams", "close outlook", "outlook not working", "teams not working"]):
         return "restart_teams_outlook"
         
     # 5. Disk Space Cleanup
-    if any(kw in msg for kw in ["c drive full", "out of space", "disk full", "empty recycle bin", "temp files", "delete temp"]):
+    if any(kw in msg for kw in ["c drive full", "out of space", "disk full", "empty recycle bin", "temp files", "delete temp", "storage issue", "low disk space"]):
         return "empty_recycle_bin"
 
     return None
 
 class ChatInput(BaseModel):
     message: str
-    conversation_history: Optional[list[dict]] = []
+    conversation_history: Optional[List[Any]] = []
 
 class TicketPayload(BaseModel):
     user_name: str
@@ -167,21 +168,29 @@ async def ask_ai(payload: ChatInput):
             "title": ACTION_SCRIPTS[suggested_action]["title"],
             "description": ACTION_SCRIPTS[suggested_action]["description"]
         }
+        # FAST PATH: If we know exactly what they need, bypass the slow CPU-bound LLM
+        # and return the action card immediately.
+        return {
+            "reply": f"I can help with that! I have an automated fix for **{action_data['title']}**.",
+            "model": "rule-based-fast-path",
+            "done": True,
+            "suggested_action": action_data
+        }
 
-    # 2. AI Response
+    # 2. AI Response (only for general chat, fallback)
     full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {payload.message}\nAssistant:"
 
-    # Increase timeout to 300s (5 minutes) for model loading/inference
+    # Increase timeout to 600s (10 minutes) for initial model loading/inference
     # Use a specific timeout config for connect vs read
     timeout_config = httpx.Timeout(
-        timeout=300.0,
+        timeout=600.0,
         connect=10.0,   # Quick connection check
-        read=290.0      # Long wait for generation
+        read=590.0      # Long wait for generation (loading model into memory takes time)
     )
 
     async with httpx.AsyncClient(timeout=timeout_config) as client:
         try:
-            logger.info(f"Sending request to Ollama: {str(payload.message)[:60]}...")
+            logger.info(f"Sending request to Ollama: {str(payload.message)[0:60]}...")
             response = await client.post(
                 OLLAMA_URL,
                 json={
@@ -242,10 +251,10 @@ async def execute_script(payload: ScriptExecutionPayload):
     logger.info(f"Executing script: {script_id}")
     
     try:
-        # Define the execution function
-        def run_powershell(script):
+        # Use a zero-arg closure and cast it so Pyre2's to_thread stub (*Unknown, **Unknown) accepts it
+        def _run() -> "subprocess.CompletedProcess[str]":
             return subprocess.run(
-                ['powershell.exe', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-NonInteractive', '-Command', script],
+                ['powershell.exe', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-NonInteractive', '-Command', script_content],
                 capture_output=True,
                 text=True,
                 errors='replace'
@@ -253,7 +262,7 @@ async def execute_script(payload: ScriptExecutionPayload):
 
         # Run in a separate thread to avoid blocking the event loop
         logger.info(f"Starting thread for powershell execution...")
-        result = await asyncio.to_thread(run_powershell, script_content)
+        result = await asyncio.to_thread(cast(Any, _run))
         
         output = result.stdout.strip()
         error = result.stderr.strip()
@@ -279,7 +288,7 @@ async def execute_script(payload: ScriptExecutionPayload):
         import traceback
         err_msg = traceback.format_exc()
         logger.error(f"Critical error executing script {script_id}: {err_msg}")
-        raise HTTPException(status_code=500, detail=f"Script execution failed: {str(e)} | Details: {err_msg[:200]}")
+        raise HTTPException(status_code=500, detail=f"Script execution failed: {str(e)} | Details: {err_msg[0:200]}")
 
 
 @app.post("/bridge-to-portal")

@@ -110,26 +110,27 @@ export default function Dashboard() {
     return (
         <div className="min-h-screen flex flex-col">
             {/* Top Navigation Bar */}
-            <header className="glass border-b border-border/50 px-6 py-4 sticky top-0 z-40 flex-shrink-0">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <header className="glass-strong border-b border-border/50 px-6 py-3.5 sticky top-0 z-40 flex-shrink-0">
+                <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+                    {/* Brand */}
                     <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-primary/20 border border-primary/40 flex items-center justify-center">
-                            <Activity className="w-5 h-5 text-primary" />
+                        <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center glow-primary flex-shrink-0">
+                            <Activity className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                            <h1 className="font-bold text-foreground text-lg leading-none">InfraBuddy</h1>
-                            <p className="text-xs text-muted-foreground leading-none mt-0.5">Admin Portal</p>
+                            <h1 className="font-bold text-gradient text-base leading-none">InfraBuddy</h1>
+                            <p className="text-[11px] text-muted-foreground leading-none mt-0.5">Admin Portal</p>
                         </div>
                     </div>
 
                     {/* Tabs */}
-                    <nav className="flex items-center gap-1 bg-muted/30 rounded-lg p-1">
+                    <nav className="flex items-center gap-1 bg-muted/30 rounded-xl p-1 border border-border/40">
                         {TABS.map(({ id, label, icon }) => (
                             <button
                                 key={id}
                                 onClick={() => setActiveTab(id)}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${activeTab === id
-                                        ? "bg-primary text-primary-foreground shadow-sm"
+                                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === id
+                                        ? "gradient-primary text-white shadow-md"
                                         : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                                     }`}
                             >
@@ -141,8 +142,8 @@ export default function Dashboard() {
 
                     {/* Refresh */}
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span>
-                            Last refresh: {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        <span className="hidden sm:block">
+                            Updated: {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </span>
                         <Button
                             id="refresh-btn"
@@ -150,8 +151,9 @@ export default function Dashboard() {
                             size="sm"
                             onClick={() => fetchAll(true)}
                             disabled={refreshing}
+                            className="border-border/60 hover:border-primary/40 transition-colors"
                         >
-                            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
                             Refresh
                         </Button>
                     </div>

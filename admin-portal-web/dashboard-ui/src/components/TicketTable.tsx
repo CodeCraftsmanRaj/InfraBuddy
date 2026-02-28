@@ -2,7 +2,6 @@ import { useState } from "react"
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { MLBadge, StatusBadge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 
 interface Ticket {
     ticket_id: string
