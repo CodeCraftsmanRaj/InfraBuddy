@@ -1,0 +1,42 @@
+# Node modules
+**/node_modules/
+
+# Python virtual environments and caches
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/*.pyc
+**/.ruff_cache/
+**/.mypy_cache/
+
+# Environment variables
+**/.env
+**/.env.local
+
+# Build output
+**/dist/
+**/build/
+**/.vite/
+
+# ML specific
+**/ml-engine/data/synthetic_tickets.csv
+**/ml-engine/models/*.joblib
+**/ml-engine/models/*.json
+
+# Bun / NPM
+**/bun.lockb
+**/bun.lock
+bun.zip
+bun/
+
+# OS Specific
+.DS_Store
+Thumbs.db
+
+# Any random scratch files
+test_bridge.py
+
+admin-portal-web/dashboard-ui/bun-windows-x64/bun.exe
+**/bun-windows-x64/
+*.exe

@@ -1,0 +1,16 @@
+[project]
+name = "ml-engine"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115.5",
+    "httpx>=0.28.1",
+    "joblib>=1.4.2",
+    "numpy>=2.2.0",
+    "pandas>=2.3.0",
+    "pydantic>=2.10.3",
+    "python-multipart>=0.0.20",
+    "scikit-learn>=1.6.0",
+    "uvicorn[standard]>=0.32.1",
+]
