@@ -8,14 +8,30 @@ import { cn } from "@/lib/utils"
 
 const EDGE_API = "http://localhost:8000"
 
+interface SuggestedAction {
+    id: string
+    title: string
+    description: string
+}
+
 interface Message {
     id: string
     role: "user" | "assistant" | "system"
     content: string
     timestamp: Date
+    suggestedAction?: SuggestedAction
+    actionResult?: string
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+    message,
+    onExecuteAction,
+    isExecuting,
+}: {
+    message: Message
+    onExecuteAction?: (actionId: string, messageId: string) => void
+    isExecuting?: boolean
+}) {
     const isUser = message.role === "user"
     const isSystem = message.role === "system"
 
@@ -48,23 +64,67 @@ function MessageBubble({ message }: { message: Message }) {
             </div>
 
             {/* Bubble */}
-            <div
-                className={cn(
-                    "max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                    isUser
-                        ? "bg-primary text-primary-foreground rounded-tr-sm"
-                        : "glass text-foreground rounded-tl-sm"
-                )}
-            >
-                <p className="whitespace-pre-wrap">{message.content}</p>
-                <p
+            <div className="flex flex-col gap-2 max-w-[75%]">
+                <div
                     className={cn(
-                        "text-[10px] mt-1 opacity-60",
-                        isUser ? "text-right" : "text-left"
+                        "rounded-2xl px-4 py-3 text-sm leading-relaxed",
+                        isUser
+                            ? "bg-primary text-primary-foreground rounded-tr-sm"
+                            : "glass text-foreground rounded-tl-sm"
                     )}
                 >
-                    {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </p>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <p
+                        className={cn(
+                            "text-[10px] mt-1 opacity-60",
+                            isUser ? "text-right" : "text-left"
+                        )}
+                    >
+                        {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                </div>
+
+                {/* Agentic Action Card */}
+                {message.suggestedAction && !message.actionResult && (
+                    <Card className="glass border-accent/30 p-3 mt-1 space-y-2 animate-in slide-in-from-top-2">
+                        <div className="flex items-start gap-2 text-sm text-foreground">
+                            <Bot className="w-4 h-4 mt-0.5 text-accent" />
+                            <div>
+                                <p className="font-semibold">{message.suggestedAction.title}</p>
+                                <p className="text-xs text-muted-foreground">
+                                    {message.suggestedAction.description}
+                                </p>
+                            </div>
+                        </div>
+                        <Button
+                            size="sm"
+                            className="w-full relative overflow-hidden"
+                            disabled={isExecuting}
+                            onClick={() =>
+                                onExecuteAction?.(message.suggestedAction!.id, message.id)
+                            }
+                        >
+                            {isExecuting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                    Running Fix...
+                                </>
+                            ) : (
+                                "Approve & Run Fix"
+                            )}
+                        </Button>
+                    </Card>
+                )}
+
+                {/* Agentic Action Result */}
+                {message.actionResult && (
+                    <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded-md border border-border/50">
+                        <p className="font-semibold mb-1">Fix Result:</p>
+                        <pre className="whitespace-pre-wrap font-mono text-[10px] max-h-32 overflow-y-auto">
+                            {message.actionResult}
+                        </pre>
+                    </div>
+                )}
             </div>
         </div>
     )
@@ -99,6 +159,7 @@ export default function ChatInterface() {
     ])
     const [input, setInput] = useState("")
     const [isLoading, setIsLoading] = useState(false)
+    const [isExecutingScript, setIsExecutingScript] = useState(false)
     const [isOnline, setIsOnline] = useState<boolean | null>(null)
     const [showTicketModal, setShowTicketModal] = useState(false)
     const [lastUserMessage, setLastUserMessage] = useState("")
@@ -116,18 +177,57 @@ export default function ChatInterface() {
     // Auto-scroll
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-    }, [messages, isLoading])
+    }, [messages, isLoading, isExecutingScript])
 
-    const addMessage = useCallback((role: Message["role"], content: string) => {
-        const msg: Message = {
-            id: `${Date.now()}-${Math.random()}`,
-            role,
-            content,
-            timestamp: new Date(),
+    const addMessage = useCallback(
+        (role: Message["role"], content: string, suggestedAction?: SuggestedAction) => {
+            const msg: Message = {
+                id: `${Date.now()}-${Math.random()}`,
+                role,
+                content,
+                timestamp: new Date(),
+                suggestedAction,
+            }
+            setMessages((prev) => [...prev, msg])
+            return msg
+        },
+        []
+    )
+
+    const executeAction = async (actionId: string, messageId: string) => {
+        setIsExecutingScript(true)
+        try {
+            const res = await fetch(`${EDGE_API}/execute-script`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ script_id: actionId }),
+            })
+
+            const data = await res.json()
+            const resultText = res.ok
+                ? data.output || "Completed successfully with no output."
+                : `Error: ${data.detail || data.error}`
+
+            setMessages((prev) =>
+                prev.map((m) => (m.id === messageId ? { ...m, actionResult: resultText } : m))
+            )
+
+            // Add an AI summarization message
+            addMessage(
+                "assistant",
+                res.ok
+                    ? "I ran the fix for you! Did this resolve your issue?"
+                    : "I attempted to run the fix, but it encountered an error. Would you like to raise a support ticket instead?"
+            )
+        } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : "Execution failed."
+            setMessages((prev) =>
+                prev.map((m) => (m.id === messageId ? { ...m, actionResult: `Failed: ${errMsg}` } : m))
+            )
+        } finally {
+            setIsExecutingScript(false)
         }
-        setMessages((prev) => [...prev, msg])
-        return msg
-    }, [])
+    }
 
     const sendMessage = useCallback(async () => {
         const text = input.trim()
@@ -155,7 +255,11 @@ export default function ChatInterface() {
 
             const data = await res.json()
             const reply = data.reply || "I couldn't generate a response."
-            addMessage("assistant", reply)
+
+            // Handle new agentic returned action if present
+            const suggestedAction = data.suggested_action as SuggestedAction | undefined;
+
+            addMessage("assistant", reply, suggestedAction)
             setChatContext((prev) => prev + `\nAssistant: ${reply}`)
         } catch (err: unknown) {
             const errMsg =
@@ -228,7 +332,12 @@ export default function ChatInterface() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto space-y-4 pr-1">
                 {messages.map((msg) => (
-                    <MessageBubble key={msg.id} message={msg} />
+                    <MessageBubble
+                        key={msg.id}
+                        message={msg}
+                        onExecuteAction={executeAction}
+                        isExecuting={isExecutingScript}
+                    />
                 ))}
                 {isLoading && <TypingIndicator />}
                 <div ref={bottomRef} />
