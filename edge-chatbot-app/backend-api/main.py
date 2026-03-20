@@ -5,7 +5,6 @@ Bridges ticket creation to the Admin Portal (port 9000).
 """
 from __future__ import annotations
 
-import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -13,12 +12,7 @@ from typing import Optional, List, Any, cast
 import httpx
 import subprocess
 import asyncio
-import asyncio.subprocess
 import logging
-
-# Fix for Windows asyncio subprocess support
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,7 +34,7 @@ app.add_middleware(
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 ADMIN_PORTAL_URL = "http://localhost:9000/receive-ticket"
-OLLAMA_MODEL = "gemma3"
+OLLAMA_MODEL = "llama3.2"
 
 SYSTEM_PROMPT = (
     "You are InfraBuddy, an expert technical support assistant. "
@@ -52,56 +46,107 @@ SYSTEM_PROMPT = (
 ACTION_SCRIPTS = {
     "clear_browser_cache": {
         "title": "Clear Browser Cache",
-        "description": "Deletes Chrome and Edge temporary browser data.",
-        "script": r'''
-Write-Host "Clearing Chrome cache..."
-Remove-Item -Path "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache\*" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Clearing Edge cache..."
-Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Cache\*" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Browser cache cleared successfully."
+                "description": "Deletes Chrome/Chromium/Brave/Firefox temporary browser data and verifies what was removed.",
+        "script": r'''#!/bin/bash
+set -u
+shopt -s nullglob
+
+echo "Scanning browser cache locations..."
+
+total_found=0
+total_removed=0
+
+clear_glob() {
+    local pattern="$1"
+    local label="$2"
+    local matches=( $pattern )
+    local count=${#matches[@]}
+
+    if (( count > 0 )); then
+        echo "Found $count entries in $label"
+        rm -rf ${pattern} || true
+        total_found=$((total_found + count))
+        total_removed=$((total_removed + count))
+    else
+        echo "No cache entries found in $label"
+    fi
+}
+
+clear_glob "$HOME/.cache/google-chrome/Default/Cache/*" "Google Chrome"
+clear_glob "$HOME/.cache/chromium/Default/Cache/*" "Chromium"
+clear_glob "$HOME/.cache/BraveSoftware/Brave-Browser/Default/Cache/*" "Brave"
+clear_glob "$HOME/.cache/mozilla/firefox/*/cache2/*" "Firefox"
+
+if (( total_found == 0 )); then
+    echo "No supported browser cache files were found to clear."
+    exit 2
+fi
+
+echo "Browser cache cleanup completed. Removed approximately $total_removed entries."
+exit 0
 '''
     },
     "system_speed_cleanup": {
         "title": "Improve System Slowness",
-        "description": "Checks system resources and clears temporary files to improve speed.",
-        "script": r'''
-Write-Host "Diagnosing System Slowness..."
-Write-Host "Clearing User TEMP folder..."
-Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Clearing Windows TEMP folder..."
-Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "Accessible temporary files cleared. Some system-locked files were skipped — this is normal and expected on Windows."
+        "description": "Clears temporary files and cache to improve system speed.",
+        "script": r'''#!/bin/bash
+echo "Diagnosing System Slowness..."
+echo "Clearing user temporary files..."
+rm -rf ~/.cache/*
+rm -rf /tmp/* 2>/dev/null || true
+echo "Clearing pip cache..."
+rm -rf ~/.cache/pip
+echo "Temporary files cleared. System performance may improve."
 '''
     },
-    "restart_wifi": {
-        "title": "Restart Wi-Fi Connection",
-        "description": "Disables and re-enables the primary Wi-Fi adapter.",
-        "script": r'''
-Write-Host "Restarting Wi-Fi Adapter (requires admin privileges to actually change hardware states, simulating...)"
-Write-Host "Checking connection..."
-Start-Sleep -Seconds 2
-ipconfig /renew
-Write-Host "Wi-Fi connection refreshed."
+    "restart_network": {
+        "title": "Restart Network Connection",
+        "description": "Restarts the network connection to resolve connectivity issues.",
+        "script": r'''#!/bin/bash
+set -u
+
+echo "Restarting network connection..."
+
+if command -v nmcli >/dev/null 2>&1; then
+    if nmcli networking off >/dev/null 2>&1 && sleep 2 && nmcli networking on >/dev/null 2>&1; then
+        echo "Network restarted using nmcli."
+        exit 0
+    fi
+fi
+
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    if sudo systemctl restart NetworkManager 2>/dev/null || sudo systemctl restart networking 2>/dev/null; then
+        echo "Network restarted using systemctl."
+        exit 0
+    fi
+fi
+
+echo "Could not restart network automatically (missing privileges or service)."
+echo "Try manually: sudo systemctl restart NetworkManager"
+exit 1
 '''
     },
-    "restart_teams_outlook": {
-        "title": "Restart Teams & Outlook",
-        "description": "Force quits Microsoft Teams and Outlook, then relaunches them.",
-        "script": r'''
-Write-Host "Force quitting Teams and Outlook..."
-Stop-Process -Name "Teams" -Force -ErrorAction SilentlyContinue
-Stop-Process -Name "OUTLOOK" -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
-Write-Host "Apps closed successfully. Please launch them from your start menu."
+    "close_heavy_apps": {
+        "title": "Close Heavy Applications",
+        "description": "Closes resource-heavy applications to free up system memory.",
+        "script": r'''#!/bin/bash
+echo "Closing heavy applications..."
+killall -9 firefox 2>/dev/null || true
+killall -9 chromium 2>/dev/null || true
+killall -9 google-chrome 2>/dev/null || true
+echo "Heavy applications closed. System memory freed."
 '''
     },
-    "empty_recycle_bin": {
+    "clear_disk_space": {
         "title": "Clear Disk Space",
-        "description": "Empties the recycle bin to free up C: drive space.",
-        "script": r'''
-Write-Host "Emptying Recycle Bin..."
-Clear-RecycleBin -Force -ErrorAction SilentlyContinue
-Write-Host "Recycle bin emptied."
+        "description": "Removes old package caches and temporary files to free up disk space.",
+        "script": r'''#!/bin/bash
+echo "Clearing disk space..."
+echo "Removing old package caches..."
+paccache -r -k1 2>/dev/null || sudo apt-get clean 2>/dev/null || echo "Package cache cleanup skipped."
+echo "Cleaning journal logs..."
+sudo journalctl --vacuum=3d 2>/dev/null || echo "Journal cleanup requires sudo."
+echo "Disk space cleanup completed."
 '''
     }
 }
@@ -118,17 +163,17 @@ def detect_intent(message: str) -> Optional[str]:
     if any(kw in msg for kw in ["system is slow", "pc is slow", "laptop freezing", "computer lagging", "monitor traffic", "system resources", "laptop is slow"]):
         return "system_speed_cleanup"
         
-    # 3. Wi-Fi Restart
+    # 3. Network Restart
     if any(kw in msg for kw in ["internet is not working", "wifi drops", "no internet", "cannot connect to wifi", "wifi restarting", "connection issue", "wifi is not working", "internet is slow"]):
-        return "restart_wifi"
+        return "restart_network"
         
-    # 4. Application Restart (Teams/Outlook)
-    if any(kw in msg for kw in ["teams not loading", "teams frozen", "outlook frozen", "outlook not responding", "session data", "close teams", "close outlook", "outlook not working", "teams not working"]):
-        return "restart_teams_outlook"
+    # 4. Close heavy applications
+    if any(kw in msg for kw in ["teams not loading", "teams frozen", "outlook frozen", "outlook not responding", "session data", "close teams", "close outlook", "outlook not working", "teams not working", "app is hanging", "app is frozen", "system memory full"]):
+        return "close_heavy_apps"
         
     # 5. Disk Space Cleanup
     if any(kw in msg for kw in ["c drive full", "out of space", "disk full", "empty recycle bin", "temp files", "delete temp", "storage issue", "low disk space"]):
-        return "empty_recycle_bin"
+        return "clear_disk_space"
 
     return None
 
@@ -162,7 +207,7 @@ async def ask_ai(payload: ChatInput):
     # 1. Intent Detection
     suggested_action = detect_intent(payload.message)
     action_data = None
-    if suggested_action:
+    if suggested_action and suggested_action in ACTION_SCRIPTS:
         action_data = {
             "id": suggested_action,
             "title": ACTION_SCRIPTS[suggested_action]["title"],
@@ -176,6 +221,9 @@ async def ask_ai(payload: ChatInput):
             "done": True,
             "suggested_action": action_data
         }
+    elif suggested_action:
+        # Defensive guard: never crash if an unknown action key is returned.
+        logger.warning(f"Detected unsupported action key: {suggested_action}")
 
     # 2. AI Response (only for general chat, fallback)
     full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {payload.message}\nAssistant:"
@@ -215,7 +263,7 @@ async def ask_ai(payload: ChatInput):
                 status_code=503,
                 detail=(
                     "Cannot connect to Ollama. Please ensure Ollama is running "
-                    "('ollama serve') and the llama3 model is pulled ('ollama pull llama3')."
+                    f"('ollama serve') and the configured model is available ('ollama pull {OLLAMA_MODEL}')."
                 ),
             )
         except httpx.ConnectTimeout:
@@ -241,7 +289,7 @@ async def ask_ai(payload: ChatInput):
 @app.post("/execute-script")
 async def execute_script(payload: ScriptExecutionPayload):
     """
-    Executes a predefined PowerShell script locally on the machine.
+    Executes a predefined bash script locally on the machine (Linux/Arch).
     """
     script_id = payload.script_id
     if script_id not in ACTION_SCRIPTS:
@@ -251,17 +299,18 @@ async def execute_script(payload: ScriptExecutionPayload):
     logger.info(f"Executing script: {script_id}")
     
     try:
-        # Use a zero-arg closure and cast it so Pyre2's to_thread stub (*Unknown, **Unknown) accepts it
+        # Use a zero-arg closure to execute bash scripts on Linux
         def _run() -> "subprocess.CompletedProcess[str]":
             return subprocess.run(
-                ['powershell.exe', '-ExecutionPolicy', 'Bypass', '-NoProfile', '-NonInteractive', '-Command', script_content],
+                ['bash', '-c', script_content],
                 capture_output=True,
                 text=True,
-                errors='replace'
+                errors='replace',
+                timeout=120
             )
 
         # Run in a separate thread to avoid blocking the event loop
-        logger.info(f"Starting thread for powershell execution...")
+        logger.info(f"Starting thread for bash script execution...")
         result = await asyncio.to_thread(cast(Any, _run))
         
         output = result.stdout.strip()
@@ -269,8 +318,9 @@ async def execute_script(payload: ScriptExecutionPayload):
         
         if result.returncode != 0:
             logger.error(f"Script {script_id} failed with code {result.returncode}: {error}")
+            status = "warning" if result.returncode == 2 else "error"
             return {
-                "status": "error",
+                "status": status,
                 "output": output,
                 "error": error,
                 "exit_code": result.returncode
@@ -284,6 +334,9 @@ async def execute_script(payload: ScriptExecutionPayload):
             "exit_code": result.returncode
         }
         
+    except subprocess.TimeoutExpired:
+        logger.error(f"Script {script_id} timed out")
+        raise HTTPException(status_code=504, detail="Script execution timed out after 120 seconds.")
     except Exception as e:
         import traceback
         err_msg = traceback.format_exc()

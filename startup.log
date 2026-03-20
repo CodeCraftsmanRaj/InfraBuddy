@@ -1,0 +1,50 @@
+[0;32mStarting Edge Support System Servers...[0m
+[0;36mClearing cache and temporary files...[0m
+==> no candidate packages found for pruning
+[0;36mChecking and installing dependencies...[0m
+[0;36mStarting Admin Portal API on port 9000...[0m
+[0;36mStarting Admin Portal Dashboard on port 5174...[0m
+[0;36mStarting Edge Chatbot API on port 8000...[0m
+[0;36mStarting Edge Chatbot UI on port 5173...[0m
+[0;32mAll servers are starting up![0m
+[0;36mAdmin Portal API: http://localhost:9000[0m
+[0;36mAdmin Dashboard: http://localhost:5174[0m
+[0;36mChatbot API: http://localhost:8000[0m
+[0;36mChatbot Frontend: http://localhost:5173[0m
+[0;32mPress Ctrl+C to stop all servers...[0m
+$ vite --port 5174
+$ vite --port 5173
+INFO:     Will watch for changes in these directories: ['/home/raj_99/Projects/SystemsPlus/Hackathon/InfraBuddy/edge-chatbot-app/backend-api']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [20197] using WatchFiles
+INFO:     Will watch for changes in these directories: ['/home/raj_99/Projects/SystemsPlus/Hackathon/InfraBuddy/admin-portal-web/portal-api']
+INFO:     Uvicorn running on http://127.0.0.1:9000 (Press CTRL+C to quit)
+INFO:     Started reloader process [20198] using WatchFiles
+
+  VITE v6.4.1  ready in 243 ms
+
+  ➜  Local:   http://127.0.0.1:5173/
+
+  VITE v6.4.1  ready in 240 ms
+
+  ➜  Local:   http://127.0.0.1:5174/
+INFO:     Started server process [20222]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Started server process [20225]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+10:22:38 PM [vite] vite.config.ts changed, restarting server...
+10:22:38 PM [vite] server restarted.
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.29.120:5173/
+10:22:45 PM [vite] vite.config.ts changed, restarting server...
+10:22:45 PM [vite] server restarted.
+
+  ➜  Local:   http://localhost:5174/
+  ➜  Network: http://192.168.29.120:5174/
+10:22:50 PM [vite] vite.config.ts changed, restarting server...
+10:22:50 PM [vite] vite.config.ts changed, restarting server...
+10:22:50 PM [vite] server restarted.
+10:22:50 PM [vite] server restarted.

@@ -1,0 +1,18 @@
+Now I have to explain the whole technical part of this solution and I have to cover the below  points can you generate me a  speech for the same:
+1. It has bridging so we can host it on intranet also and edge compute the chatbot hence security is covered furthermore it can also be connected to the internet yet remain secure like one can be hosted on the internet (ticketing portal)
+2. Further we have ML models explain all of them in short
+3. We have classification also
+4. Agentic capabilities 
+5. System prompt we can conviniently change 
+6. Mention of asyncio library
+7. Use of ollama
+8. No cost as everything will use system resources hence all the money is sortof gross maargin
+9. Multi platform support It works on linux as well as windows now
+10. Further we hae also ensured that the tech stack is rich like use of react js can be added through a wrapper using electron and we can get all 3 mac windows and app image builds
+11. We have also the functionality of packing it into extension
+12. We can also in future have the option to resolve or increase the scope and almost eliminate the ticket raising.
+
+Also give me these pointers organised and a small script for the same got it? 
+
+
+AI speech:-
